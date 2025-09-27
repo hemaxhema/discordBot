@@ -423,6 +423,11 @@ async def learn(ctx: commands.Context, study_minutes: int, break_minutes: int):
 
     # Immediate server mute to start
     try:
+        await _send_in_dark_chat(
+        ctx.guild,
+        f"▶️ Start study {study_minutes}m / break {break_minutes}m.  !stop to end.",
+    )
+
         await _mute_all_in_channel(channel, mute=True)
         guild_id_to_phase[ctx.guild.id] = "study"
     except discord.Forbidden:
@@ -446,10 +451,6 @@ async def learn(ctx: commands.Context, study_minutes: int, break_minutes: int):
         pass
     # Clear any previous status message pointer
     guild_id_to_status_message_id.pop(ctx.guild.id, None)
-    await _send_in_dark_chat(
-        ctx.guild,
-        f"▶️ Start study {study_minutes}m / break {break_minutes}m.  !stop to end.",
-    )
 
 
 @bot.command(name="stop")
