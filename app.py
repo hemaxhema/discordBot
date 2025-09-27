@@ -146,10 +146,17 @@ async def _countdown_task(guild: discord.Guild, total_seconds: int, phase: str, 
             # Wait a moment then delete the message
             await asyncio.sleep(2)
             await status_msg.delete()
-            # Clear the stored message ID
-            guild_id_to_status_message_id.pop(guild.id, None)
         except Exception:
-            pass
+            # If deletion fails, try to edit the message to show it's completed
+            try:
+                await status_msg.edit(content="✅ Phase completed")
+                await asyncio.sleep(3)
+                await status_msg.delete()
+            except Exception:
+                pass
+        finally:
+            # Always clear the stored message ID
+            guild_id_to_status_message_id.pop(guild.id, None)
     except asyncio.CancelledError:
         pass
 
@@ -513,6 +520,20 @@ async def stop_cycle(ctx: commands.Context):
 
     # Disconnect from voice if connected
     await _disconnect_voice(ctx.guild)
+
+    # Clean up any remaining status messages
+    try:
+        status_msg_id = guild_id_to_status_message_id.get(ctx.guild.id)
+        if status_msg_id:
+            text_channel = _get_dark_text_channel(ctx.guild)
+            if text_channel:
+                try:
+                    status_msg = await text_channel.fetch_message(status_msg_id)
+                    await status_msg.delete()
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
     # Send stop confirmation and summary
     await _send_in_dark_chat(ctx.guild, f"📘 study finished: {completed_count} cycles.")
