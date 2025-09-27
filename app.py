@@ -654,13 +654,11 @@ async def clear_bot_commands(ctx: commands.Context):
 
 def _run():
     # Prefer hardcoded token if replaced; otherwise fallback to environment variable
-    token = (
-        BOT_TOKEN if BOT_TOKEN and BOT_TOKEN != "PUT_YOUR_BOT_TOKEN_HERE" else os.getenv(BOT_TOKEN_ENV)
-    )
+    token = BOT_TOKEN 
     if not token:
         print(
             "No Discord token found. Either set BOT_TOKEN in the file (replace the placeholder), "
-            f"or set environment variable {BOT_TOKEN_ENV}."
+         
         )
         return
     bot.run(token)
