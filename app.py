@@ -7,6 +7,7 @@ import discord
 from discord.ext import commands
 
 
+
 # ---- Configuration ----
 # Bot token can be hardcoded below, or read from the DISCORD_TOKEN environment variable.
 # Replace the placeholder with your real token if you want it in-code.
@@ -138,10 +139,15 @@ async def _countdown_task(guild: discord.Guild, total_seconds: int, phase: str, 
                     guild_id_to_status_message_id[guild.id] = status_msg.id
                 except Exception:
                     pass
-        # Final update to 0
+        # Final update to 0, then delete the message
         final_content = f"[{label} #{phase_number}: 00/{total_minutes:02d}]" if total_minutes > 0 else f"[{label} #{phase_number}: 00]"
         try:
             await status_msg.edit(content=final_content)
+            # Wait a moment then delete the message
+            await asyncio.sleep(2)
+            await status_msg.delete()
+            # Clear the stored message ID
+            guild_id_to_status_message_id.pop(guild.id, None)
         except Exception:
             pass
     except asyncio.CancelledError:
@@ -435,7 +441,7 @@ async def learn(ctx: commands.Context, study_minutes: int, break_minutes: int):
     guild_id_to_status_message_id.pop(ctx.guild.id, None)
     await _send_in_dark_chat(
         ctx.guild,
-        f"▶️ start study for {study_minutes}m / break {break_minutes}m. Use !stop to end.",
+        f"▶️ Start study {study_minutes}m / break {break_minutes}m.  !stop to end.",
     )
 
 
@@ -509,7 +515,7 @@ async def stop_cycle(ctx: commands.Context):
     await _disconnect_voice(ctx.guild)
 
     # Send stop confirmation and summary
-    await _send_in_dark_chat(ctx.guild, f"📘 Summary: completed study phases this cycle: {completed_count}.")
+    await _send_in_dark_chat(ctx.guild, f"📘 study finished: {completed_count} cycles.")
     # Clear status message pointer for next cycle/phase
     guild_id_to_status_message_id.pop(ctx.guild.id, None)
 
@@ -623,7 +629,6 @@ async def clear_bot_commands(ctx: commands.Context):
             deleted_total += len(deleted)
         except Exception:
             pass
-    await _send_in_dark_chat(ctx.guild, f"🧹 Cleared command messages. Deleted: {deleted_total}.")
 
 
 def _run():
