@@ -10,7 +10,7 @@ from discord.ext import commands
 # ---- Configuration ----
 # Bot token can be hardcoded below, or read from the DISCORD_TOKEN environment variable.
 # Replace the placeholder with your real token if you want it in-code.
-BOT_TOKEN: str = "MTQyMDc2OTkxMzQyOTE2ODI1OQ.G4riUO.YEOq5cYS6SyunNUUNBmRMw5i-oSsJN1VS0G2-4"
+BOT_TOKEN: str = os.environ["tokenbot"]
 BOT_TOKEN_ENV = "DISCORD_TOKEN"
 
 # Fixed voice channel name as requested (cannot be customized)
