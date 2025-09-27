@@ -11,7 +11,6 @@ from discord.ext import commands
 # Bot token can be hardcoded below, or read from the DISCORD_TOKEN environment variable.
 # Replace the placeholder with your real token if you want it in-code.
 BOT_TOKEN: str = os.environ["tokenbot"]
-BOT_TOKEN_ENV = "DISCORD_TOKEN"
 
 # Fixed voice channel name as requested (cannot be customized)
 DARK_VOICE_CHANNEL_NAME = "dark-voice"
