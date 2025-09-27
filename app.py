@@ -372,7 +372,6 @@ async def clear_bot_messages(ctx: commands.Context):
     deleted_total = 0
     for ch in ctx.guild.text_channels:
         deleted_total += await _purge_bot_messages_in_channel(ch)
-    await _send_in_dark_chat(ctx.guild, f"🧹 Cleared bot messages. Deleted: {deleted_total}.")
 
 
 @bot.event
@@ -436,7 +435,7 @@ async def learn(ctx: commands.Context, study_minutes: int, break_minutes: int):
     guild_id_to_status_message_id.pop(ctx.guild.id, None)
     await _send_in_dark_chat(
         ctx.guild,
-        f"▶️ Started in '{DARK_VOICE_CHANNEL_NAME}': study {study_minutes}m / break {break_minutes}m. Use !stop to end.",
+        f"▶️ start study for {study_minutes}m / break {break_minutes}m. Use !stop to end.",
     )
 
 
@@ -510,7 +509,6 @@ async def stop_cycle(ctx: commands.Context):
     await _disconnect_voice(ctx.guild)
 
     # Send stop confirmation and summary
-    await _send_in_dark_chat(ctx.guild, f"⏹️ Stopped and unmuted everyone.")
     await _send_in_dark_chat(ctx.guild, f"📘 Summary: completed study phases this cycle: {completed_count}.")
     # Clear status message pointer for next cycle/phase
     guild_id_to_status_message_id.pop(ctx.guild.id, None)
@@ -589,11 +587,9 @@ async def unmute_command(ctx: commands.Context, member: Optional[discord.Member]
                             unmuted_count += 1
                         except Exception:
                             pass
-            await _send_in_dark_chat(ctx.guild, f"🔊 Unmuted {unmuted_count} people across all voice channels.")
             return
         # Unmute specific user
         await member.edit(mute=False, reason=f"Manual unmute by {ctx.author}")
-        await _send_in_dark_chat(ctx.guild, f"🔊 Unmuted {member.mention}.")
     except discord.Forbidden:
         await _send_in_dark_chat(ctx.guild, "🔒 Can't unmute: missing permission or role below target.")
     except Exception as e:
