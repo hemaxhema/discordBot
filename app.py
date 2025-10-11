@@ -309,7 +309,7 @@ async def _one_minute_alert(guild: discord.Guild, channel: discord.VoiceChannel,
                 try:
                     # Wrap with volume control in case the file is quiet
                     source = discord.PCMVolumeTransformer(
-                        discord.FFmpegPCMAudio(ALERT_AUDIO_FULL_PATH), volume=1.5
+                        discord.FFmpegPCMAudio(ALERT_AUDIO_FULL_PATH), volume=1.1
                     )
                     voice_client.play(source)
                     print("[alert] playing alert audio...")
