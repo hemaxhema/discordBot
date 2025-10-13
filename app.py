@@ -143,26 +143,17 @@ async def _countdown_task(guild: discord.Guild, total_seconds: int, phase: str, 
                     guild_id_to_status_message_id[guild.id] = status_msg.id
                 except Exception:
                     pass
-        # Final update to 0, then delete the message
+        # Final update to 0 and leave the message as the last status
         final_content = f"[{label} #{phase_number}: 00/{total_minutes:02d}]" if total_minutes > 0 else f"[{label} #{phase_number}: 00]"
         try:
             await status_msg.edit(content=final_content)
-            # Wait a moment then delete the message
-            await asyncio.sleep(2)
-            await status_msg.delete()
         except Exception:
-            # If deletion fails, try to edit the message to show it's completed
-            try:
-                await status_msg.edit(content="✅ Phase completed")
-                await asyncio.sleep(3)
-                await status_msg.delete()
-            except Exception:
-                pass
+            pass
         finally:
             # Always clear the stored message ID
             guild_id_to_status_message_id.pop(guild.id, None)
             guild_id_to_remaining_time[guild.id] = 0
-            # Best-effort cleanup of any leftover countdown messages like "[B #0: 00/02]"
+            # Best-effort cleanup of older countdown messages like "[B #0: 00/02]" (keep latest)
             try:
                 await _cleanup_countdown_messages_in_dark_chat(guild)
             except Exception:
@@ -407,7 +398,7 @@ async def _purge_bot_messages_in_channel(channel: discord.TextChannel, batch_siz
 
 
 async def _cleanup_countdown_messages_in_dark_chat(guild: discord.Guild, limit: int = 500) -> int:
-    """Delete messages in dark-chat that look like countdown statuses, e.g. "[B #0: 00/02]".
+    """Delete older countdown-looking messages in dark-chat, keeping the most recent one.
     Returns number deleted.
     """
     text_channel = await _get_or_create_dark_text_channel(guild)
@@ -415,11 +406,21 @@ async def _cleanup_countdown_messages_in_dark_chat(guild: discord.Guild, limit: 
         return 0
     countdown_pattern = re.compile(r"^\[[SB] #\d+: \d{2}(?:/\d{2})?\]$")
     try:
-        deleted = await text_channel.purge(
-            limit=limit,
-            check=lambda m: (m.author == bot.user) and isinstance(m.content, str) and (countdown_pattern.match(m.content) is not None),
-        )
-        return len(deleted)
+        # Fetch recent messages to find countdowns
+        countdown_messages = []
+        async for m in text_channel.history(limit=limit):
+            if m.author == bot.user and isinstance(m.content, str) and countdown_pattern.match(m.content):
+                countdown_messages.append(m)
+        # Keep the latest one, delete the rest
+        to_delete = countdown_messages[1:] if len(countdown_messages) > 1 else []
+        count = 0
+        for m in to_delete:
+            try:
+                await m.delete()
+                count += 1
+            except Exception:
+                pass
+        return count
     except Exception:
         return 0
 
@@ -586,7 +587,7 @@ async def stop_cycle(ctx: commands.Context):
     except Exception:
         pass
 
-    # Best-effort cleanup of any leftover countdown messages like "[B #0: 00/02]"
+    # Best-effort cleanup of any leftover countdown messages like "[B #0: 00/02]" (keep latest)
     try:
         await _cleanup_countdown_messages_in_dark_chat(ctx.guild)
     except Exception:
