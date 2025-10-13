@@ -2,6 +2,7 @@ import asyncio
 import os
 import time
 from typing import Dict, Optional, Tuple
+import re
 
 import discord
 from discord.ext import commands
@@ -51,6 +52,8 @@ guild_id_to_original_channel_name: Dict[int, str] = {}
 guild_id_to_voice_channel_id: Dict[int, int] = {}
 # Track the status message in dark-chat to edit countdown instead of renaming channels
 guild_id_to_status_message_id: Dict[int, int] = {}
+# Queue a one-time break extension (in minutes) to apply after current break ends
+guild_id_to_pending_break_extension_minutes: Dict[int, int] = {}
 # Debounce map to avoid spamming edits: (guild_id, member_id) -> last_edit_seconds
 recent_member_edit_time: Dict[Tuple[int, int], float] = {}
 # Minimum seconds between server-mute edits for the same member
@@ -129,6 +132,7 @@ async def _countdown_task(guild: discord.Guild, total_seconds: int, phase: str, 
         while remaining > 0:
             await asyncio.sleep(60)
             remaining -= 60
+            guild_id_to_remaining_time[guild.id] = max(remaining, 0)
             content = f"[{label} #{phase_number}: {max(remaining,0) // 60:02d}/{total_minutes:02d}]" if total_minutes > 0 else f"[{label} #{phase_number}: {max(remaining,0) // 60:02d}]"
             try:
                 await status_msg.edit(content=content)
@@ -157,6 +161,12 @@ async def _countdown_task(guild: discord.Guild, total_seconds: int, phase: str, 
         finally:
             # Always clear the stored message ID
             guild_id_to_status_message_id.pop(guild.id, None)
+            guild_id_to_remaining_time[guild.id] = 0
+            # Best-effort cleanup of any leftover countdown messages like "[B #0: 00/02]"
+            try:
+                await _cleanup_countdown_messages_in_dark_chat(guild)
+            except Exception:
+                pass
     except asyncio.CancelledError:
         pass
 
@@ -255,6 +265,24 @@ async def _cycle_task(guild: discord.Guild, study_minutes: int, break_minutes: i
                     await asyncio.sleep(60)
                 else:
                     await asyncio.sleep(break_minutes * 60)
+
+                # After the scheduled break, apply a one-time extension if queued
+                extra = guild_id_to_pending_break_extension_minutes.pop(guild.id, 0)
+                if extra and extra > 0:
+                    # Start an additional break segment
+                    guild_id_to_phase[guild.id] = "break"
+                    await _mute_all_in_channel(channel, mute=False)
+                    if guild_id_to_timer_task.get(guild.id):
+                        guild_id_to_timer_task[guild.id].cancel()
+                    guild_id_to_timer_task[guild.id] = bot.loop.create_task(
+                        _countdown_task(guild, extra * 60, "Break+", 0, extra)
+                    )
+                    if extra > 1:
+                        await asyncio.sleep((extra - 1) * 60)
+                        await _one_minute_alert(guild, channel, phase_name="break")
+                        await asyncio.sleep(60)
+                    else:
+                        await asyncio.sleep(extra * 60)
             else:
                 await asyncio.sleep(1)
     except asyncio.CancelledError:
@@ -311,10 +339,10 @@ async def _one_minute_alert(guild: discord.Guild, channel: discord.VoiceChannel,
                     source = discord.PCMVolumeTransformer(
                         discord.FFmpegPCMAudio(ALERT_AUDIO_FULL_PATH), volume=1.1
                     )
+                    # Wait a brief moment before starting playback
+                    await asyncio.sleep(0.4)
                     voice_client.play(source)
                     print("[alert] playing alert audio...")
-                    # Give a short moment to start
-                    await asyncio.sleep(0.2)
                     # Wait briefly (up to 1 second) so a beep can be heard
                     waited = 0.0
                     while voice_client.is_playing() and waited < 1.0:
@@ -322,6 +350,8 @@ async def _one_minute_alert(guild: discord.Guild, channel: discord.VoiceChannel,
                         waited += 0.1
                     if not voice_client.is_playing():
                         print("[alert] playback finished or did not start.")
+                    # Wait a brief moment after playback
+                    await asyncio.sleep(0.4)
                 except Exception as e:
                     print(f"[alert] playback error: {e}")
                 finally:
@@ -374,6 +404,24 @@ async def _purge_bot_messages_in_channel(channel: discord.TextChannel, batch_siz
     except Exception:
         pass
     return total
+
+
+async def _cleanup_countdown_messages_in_dark_chat(guild: discord.Guild, limit: int = 500) -> int:
+    """Delete messages in dark-chat that look like countdown statuses, e.g. "[B #0: 00/02]".
+    Returns number deleted.
+    """
+    text_channel = await _get_or_create_dark_text_channel(guild)
+    if text_channel is None:
+        return 0
+    countdown_pattern = re.compile(r"^\[[SB] #\d+: \d{2}(?:/\d{2})?\]$")
+    try:
+        deleted = await text_channel.purge(
+            limit=limit,
+            check=lambda m: (m.author == bot.user) and isinstance(m.content, str) and (countdown_pattern.match(m.content) is not None),
+        )
+        return len(deleted)
+    except Exception:
+        return 0
 
 
 @bot.command(name="clear")
@@ -451,6 +499,8 @@ async def learn(ctx: commands.Context, study_minutes: int, break_minutes: int):
         pass
     # Clear any previous status message pointer
     guild_id_to_status_message_id.pop(ctx.guild.id, None)
+    # Clear any leftover queued extension
+    guild_id_to_pending_break_extension_minutes.pop(ctx.guild.id, None)
 
 
 @bot.command(name="stop")
@@ -535,6 +585,15 @@ async def stop_cycle(ctx: commands.Context):
                     pass
     except Exception:
         pass
+
+    # Best-effort cleanup of any leftover countdown messages like "[B #0: 00/02]"
+    try:
+        await _cleanup_countdown_messages_in_dark_chat(ctx.guild)
+    except Exception:
+        pass
+
+    # Clear any queued break extension
+    guild_id_to_pending_break_extension_minutes.pop(ctx.guild.id, None)
 
     # Send stop confirmation and summary
     await _send_in_dark_chat(ctx.guild, f"📘 study finished: {completed_count} cycles.")
@@ -651,6 +710,25 @@ async def clear_bot_commands(ctx: commands.Context):
             deleted_total += len(deleted)
         except Exception:
             pass
+
+
+@bot.command(name="extendbreak")
+@commands.guild_only()
+async def extend_break_once(ctx: commands.Context, extra_minutes: int):
+    """Queue a one-time extension to the current/next break while the cycle is running.
+    Usage: !extendbreak 5
+    """
+    if ctx.guild is None:
+        return
+    if extra_minutes < 1 or extra_minutes > 1440:
+        await _send_in_dark_chat(ctx.guild, "Please provide EXTRA minutes between 1 and 1440.")
+        return
+    if not _is_cycle_running(ctx.guild.id):
+        await _send_in_dark_chat(ctx.guild, "No running cycle. Use !learn first.")
+        return
+    # Set/overwrite the pending extension; it will apply after the current scheduled break completes
+    guild_id_to_pending_break_extension_minutes[ctx.guild.id] = extra_minutes
+    await _send_in_dark_chat(ctx.guild, f"🕒 Will extend the break by {extra_minutes} minute(s) once.")
 
 
 def _run():
