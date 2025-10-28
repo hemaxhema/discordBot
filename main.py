@@ -331,7 +331,7 @@ async def _one_minute_alert(guild: discord.Guild, channel: discord.VoiceChannel,
                         discord.FFmpegPCMAudio(ALERT_AUDIO_FULL_PATH), volume=1.1
                     )
                     # Wait a brief moment before starting playback
-                    await asyncio.sleep(0.4)
+                    await asyncio.sleep(0.2)
                     voice_client.play(source)
                     print("[alert] playing alert audio...")
                     # Wait briefly (up to 1 second) so a beep can be heard
@@ -342,7 +342,7 @@ async def _one_minute_alert(guild: discord.Guild, channel: discord.VoiceChannel,
                     if not voice_client.is_playing():
                         print("[alert] playback finished or did not start.")
                     # Wait a brief moment after playback
-                    await asyncio.sleep(0.4)
+                    await asyncio.sleep(0.2)
                 except Exception as e:
                     print(f"[alert] playback error: {e}")
                 finally:
@@ -691,7 +691,7 @@ async def clear_bot_commands(ctx: commands.Context):
     if ctx.guild is None:
         return
     prefixes = ("!")
-    known = {"learn", "stop", "unmute", "clear", "clearcommands"}
+    known = {"learn", "stop", "unmute", "clear", "clearcommands","extendbreak"}
     def is_command_msg(m: discord.Message) -> bool:
         if not m.content:
             return False
